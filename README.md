@@ -9,10 +9,10 @@ Installs [Caddy](https://caddyserver.com/) into an **existing** LXC container
 and configures it as a reverse proxy for a domain, forwarding to a local port
 inside that container. TLS is provisioned automatically via Let's Encrypt.
 
-Run it **on the Proxmox VE host**:
+Run it **on the Proxmox VE host** (interactive — use a real terminal):
 
 ```bash
-bash add-caddy-proxy-lxc.sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/mgilbir/proxmox-scripts/main/tools/addon/add-caddy-proxy-lxc.sh)"
 ```
 
 It will:
