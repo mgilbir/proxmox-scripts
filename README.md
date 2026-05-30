@@ -76,3 +76,8 @@ It will:
 4. Download the dnshub release binary (or prompt for a URL / local path),
    generate the config and the hardened `dnshub.service`, start it, and tag the
    container `dnshub`.
+
+**Updating:** re-run the same one-liner later. If a `dnshub`-tagged container
+exists, the script offers to **update** it — it pulls the latest release binary
+(checksum-verified), pushes it in, and restarts the service — instead of
+creating a new one.

@@ -45,6 +45,46 @@ function ask_menu() { # title msg tag1 item1 tag2 item2 ...
   REPLY_VAL=$(whiptail --backtitle "$BT" --title "$title" --menu "$msg" 18 76 8 "$@" 3>&1 1>&2 2>&3) || exit 0
 }
 
+# download the latest release binary for $1 (arch) into $2 (dest), verifying it
+# against SHA256SUMS. Returns non-zero on download or checksum failure.
+function fetch_release_binary() {
+  local arch="$1" dest="$2" base="https://github.com/${REPO}/releases/latest/download"
+  curl -fsSL "${base}/dnshub-linux-${arch}" -o "$dest" 2>/dev/null || return 1
+  local sums rc=0
+  sums="$(mktemp)"
+  if curl -fsSL "${base}/SHA256SUMS" -o "$sums" 2>/dev/null && [ -s "$sums" ]; then
+    local want got
+    want="$(awk -v f="dnshub-linux-${arch}" '$2==f{print $1}' "$sums")"
+    got="$(sha256sum "$dest" | awk '{print $1}')"
+    [ -n "$want" ] && [ "$want" != "$got" ] && rc=2
+  fi
+  rm -f "$sums"
+  return $rc
+}
+
+# update an existing dnshub container to the latest release and restart it.
+function update_dnshub() {
+  local ctid="$1"
+  if [ "$(pct status "$ctid" | awk '{print $2}')" != "running" ]; then
+    msg_info "Starting CT $ctid"
+    pct start "$ctid"
+    sleep 3
+  fi
+  local arch bin
+  arch="$(pct exec "$ctid" -- dpkg --print-architecture)"
+  bin="$(mktemp)"
+  msg_info "Fetching latest dnshub ($arch) ..."
+  if ! fetch_release_binary "$arch" "$bin"; then
+    msg_error "Download or checksum verification failed."
+    rm -f "$bin"
+    exit 1
+  fi
+  pct push "$ctid" "$bin" /usr/local/bin/dnshub --perms 0755
+  rm -f "$bin"
+  pct exec "$ctid" -- systemctl restart dnshub
+  msg_ok "Updated CT $ctid -> $(pct exec "$ctid" -- /usr/local/bin/dnshub version)"
+}
+
 header_info
 
 if ! command -v pveversion &>/dev/null; then
@@ -52,14 +92,33 @@ if ! command -v pveversion &>/dev/null; then
   exit 1
 fi
 
-while true; do
-  read -rp "Create a new dnshub LXC on this Proxmox host? (y/n) " yn
-  case "$yn" in
-  [Yy]*) break ;;
-  [Nn]*) exit 0 ;;
-  *) echo "Please answer y or n." ;;
-  esac
+# If dnshub containers already exist, offer to update one (re-run = update,
+# evcc/community-scripts style) instead of creating a new one.
+UPD_ARGS=()
+for ct in $(pct list 2>/dev/null | awk 'NR>1{print $1}'); do
+  cfg="/etc/pve/lxc/${ct}.conf"
+  if grep -qE '^tags:.*dnshub' "$cfg" 2>/dev/null; then
+    name="$(awk -F': ' '/^hostname:/{print $2}' "$cfg")"
+    UPD_ARGS+=("$ct" "update CT $ct (${name:-dnshub})")
+  fi
 done
+if [ ${#UPD_ARGS[@]} -gt 0 ]; then
+  ask_menu "dnshub" "Update an existing dnshub container, or create a new one?" \
+    "${UPD_ARGS[@]}" new "Create a new dnshub LXC"
+  if [ "$REPLY_VAL" != "new" ]; then
+    update_dnshub "$REPLY_VAL"
+    exit 0
+  fi
+else
+  while true; do
+    read -rp "Create a new dnshub LXC on this Proxmox host? (y/n) " yn
+    case "$yn" in
+    [Yy]*) break ;;
+    [Nn]*) exit 0 ;;
+    *) echo "Please answer y or n." ;;
+    esac
+  done
+fi
 
 # ---------------------------------------------------------------- container ---
 header_info
@@ -176,10 +235,9 @@ esac
 # ------------------------------------------------------------------- binary ---
 ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
 BIN="/tmp/dnshub-${CTID}.bin"
-URL="https://github.com/${REPO}/releases/latest/download/dnshub-linux-${ARCH}"
 msg_info "Fetching dnshub binary ($ARCH) ..."
-if ! curl -fsSL "$URL" -o "$BIN" 2>/dev/null; then
-  msg_error "Could not download from the release (repo may be private / no release yet)."
+if ! fetch_release_binary "$ARCH" "$BIN"; then
+  msg_error "Could not download/verify the release (private repo, no release yet, or checksum mismatch)."
   ask_text "Binary URL or local path" "Provide a URL or a path on this host to the linux-${ARCH} binary." ""
   src="$REPLY_VAL"
   if [[ -f "$src" ]]; then cp "$src" "$BIN"; else curl -fsSL "$src" -o "$BIN"; fi
