@@ -180,6 +180,8 @@ if [[ "$NETMODE" == "single" ]]; then
   NET_ARGS+=(--net0 "$net")
   VLAN_NAME=(DEFAULT)
   VLAN_LISTEN=("${IPADDR%%/*}")
+  METRICS_LISTEN="${IPADDR%%/*}"
+  [[ "$IPADDR" == "dhcp" ]] && METRICS_LISTEN="0.0.0.0"
 else
   ask_text "Host octet" "Last octet for dnshub on every VLAN (the .X resolver)." "30"
   OCTET="$REPLY_VAL"
@@ -196,7 +198,10 @@ else
     base="${subnet%.*}"; mask="${subnet#*/}"; [[ "$mask" == "$subnet" ]] && mask=24
     listen="${base}.${OCTET}"
     net="name=eth${i},bridge=${BRIDGE},tag=${tag},ip=${listen}/${mask}"
-    [[ "$name" == "$GW_VLAN" ]] && net="${net},gw=${base}.1"
+    if [[ "$name" == "$GW_VLAN" ]]; then
+      net="${net},gw=${base}.1"
+      METRICS_LISTEN="$listen"   # serve metrics only on the default-route VLAN
+    fi
     NET_ARGS+=("--net${i}" "$net")
     VLAN_NAME+=("$name"); VLAN_LISTEN+=("$listen")
     i=$((i + 1))
@@ -277,7 +282,7 @@ CONF="/tmp/dnshub-${CTID}.yaml"
     echo "${line}}"
   done
   echo "mdns: {enabled: false}"
-  echo "metrics: {enabled: true, listen: \"0.0.0.0:9153\"}"
+  echo "metrics: {enabled: true, listen: \"${METRICS_LISTEN:-0.0.0.0}:9153\"}"
 } >"$CONF"
 
 # ------------------------------------------------------------ install in CT ---
