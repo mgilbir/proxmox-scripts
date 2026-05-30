@@ -325,6 +325,29 @@ ReadOnlyPaths=/etc/dnshub
 WantedBy=multi-user.target
 UNIT
 
+# in-container `update` command: enter the CT and run `update` to pull the
+# latest release, verify it, and restart (evcc-style). Needs curl in the CT.
+pct exec "$CTID" -- sh -c 'command -v curl >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq curl ca-certificates; }' >/dev/null 2>&1 || true
+pct exec "$CTID" -- sh -c 'cat > /usr/local/bin/update' <<'UPD'
+#!/usr/bin/env bash
+# Update dnshub to the latest release and restart the service.
+set -euo pipefail
+arch="$(dpkg --print-architecture)"
+base="https://github.com/mgilbir/dnshub/releases/latest/download"
+tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+echo "Fetching latest dnshub (${arch})..."
+curl -fsSL "${base}/dnshub-linux-${arch}" -o "$tmp/dnshub"
+if curl -fsSL "${base}/SHA256SUMS" -o "$tmp/SHA256SUMS" 2>/dev/null; then
+  want="$(awk -v f="dnshub-linux-${arch}" '$2==f{print $1}' "$tmp/SHA256SUMS")"
+  got="$(sha256sum "$tmp/dnshub" | awk '{print $1}')"
+  [ -n "$want" ] && [ "$want" != "$got" ] && { echo "checksum mismatch; aborting" >&2; exit 1; }
+fi
+install -m0755 "$tmp/dnshub" /usr/local/bin/dnshub
+systemctl restart dnshub
+echo "Updated to $(/usr/local/bin/dnshub version)"
+UPD
+pct exec "$CTID" -- chmod 0755 /usr/local/bin/update
+
 pct exec "$CTID" -- systemctl daemon-reload
 pct exec "$CTID" -- systemctl enable --now dnshub
 sleep 1
