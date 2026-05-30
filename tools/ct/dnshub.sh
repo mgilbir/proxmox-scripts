@@ -192,7 +192,7 @@ msg_info "Creating LXC $CTID ($HOSTNAME) ..."
 pct create "$CTID" "$TEMPLATE" \
   --hostname "$HOSTNAME" --unprivileged 1 \
   --cores "$CORES" --memory "$RAM" --swap "$((RAM / 2))" \
-  --rootfs "${STORAGE}:${DISK}" --onboot 1 --features nesting=0 \
+  --rootfs "${STORAGE}:${DISK}" --onboot 1 --features nesting=1 \
   "${NET_ARGS[@]}" >/dev/null
 pct start "$CTID"
 sleep 3
@@ -290,5 +290,7 @@ msg_ok "Done. Resolvers:"
 for idx in "${!VLAN_NAME[@]}"; do
   echo "    ${VLAN_NAME[$idx]}: dig @${VLAN_LISTEN[$idx]} example.com"
 done
-echo "  Metrics: http://<listen-ip>:9153/metrics"
+mip="${VLAN_LISTEN[0]}"
+[ "$mip" = "dhcp" ] && mip="<container-ip>"
+echo "  Metrics: http://${mip}:9153/metrics"
 [[ "$NETMODE" == "multi" ]] && echo "  Remember: vmbr0 must be VLAN-aware and the switch port a trunk carrying these tags."
