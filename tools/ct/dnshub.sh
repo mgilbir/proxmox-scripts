@@ -376,7 +376,7 @@ msg_ok "Done. Resolvers:"
 for idx in "${!VLAN_NAME[@]}"; do
   echo "    ${VLAN_NAME[$idx]}: dig @${VLAN_LISTEN[$idx]} example.com"
 done
-mip="${VLAN_LISTEN[0]}"
-[ "$mip" = "dhcp" ] && mip="<container-ip>"
+mip="${METRICS_LISTEN:-${VLAN_LISTEN[0]}}"
+[ "$mip" = "dhcp" ] || [ "$mip" = "0.0.0.0" ] && mip="<container-ip>"
 echo "  Metrics: http://${mip}:9153/metrics"
 [[ "$NETMODE" == "multi" ]] && echo "  Remember: vmbr0 must be VLAN-aware and the switch port a trunk carrying these tags."
