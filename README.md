@@ -52,3 +52,32 @@ Delete the site file inside the container and reload Caddy:
 rm /etc/caddy/sites/<domain>.caddy
 systemctl reload caddy
 ```
+
+## `tools/ct/dnshub.sh`
+
+Creates a [dnshub](https://github.com/mgilbir/dnshub) LXC **from scratch** — an
+unprivileged Debian container running the multi-homed DNS + mDNS resolver as a
+hardened systemd service.
+
+Run it **on the Proxmox VE host** (interactive — use a real terminal):
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/mgilbir/proxmox-scripts/main/tools/ct/dnshub.sh)"
+```
+
+It will:
+
+1. Prompt for container settings (CTID, hostname, cores/RAM/disk, storage,
+   bridge, and a Debian template — downloading one if none is present).
+2. Configure networking: a single NIC, or **multi-homed** with one tagged NIC
+   per VLAN at `.<octet>` (needs a VLAN-aware bridge and a trunk port).
+3. Pick the upstream: **NextDNS** (per-profile), **Cloudflare** / **Quad9**
+   (DoT), **Google** (plain Do53), or a **custom** server.
+4. Download the dnshub release binary (or prompt for a URL / local path),
+   generate the config and the hardened `dnshub.service`, start it, and tag the
+   container `dnshub`.
+
+**Updating:** re-run the same one-liner later. If a `dnshub`-tagged container
+exists, the script offers to **update** it — it pulls the latest release binary
+(checksum-verified), pushes it in, and restarts the service — instead of
+creating a new one.
